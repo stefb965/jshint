@@ -653,12 +653,15 @@ var JSHINT = (function() {
           case "3":
           case "5":
           case "6":
+          case "7":
             state.option.moz = false;
             state.option.esversion = +val;
             break;
           case "2015":
+          case "2016":
             state.option.moz = false;
-            state.option.esversion = 6;
+            // Translate specification publication year to version number.
+            state.option.esversion = +val - 2009;
             break;
           default:
             error("E002", nt);
@@ -1037,6 +1040,13 @@ var JSHINT = (function() {
       state.syntax[s] = x = {
         id: s,
         lbp: p,
+        // Symbols that accept a right-hand side do so with a binding power
+        // that is commonly identical to their left-binding power. (This value
+        // is relevant when determining if the grouping operator is necessary
+        // to override the precedence of surrounding operators.) Because the
+        // exponentiation operator's left-binding power and right-binding power
+        // are distinct, the values must be encoded separately.
+        rbp: p,
         value: s
       };
     }
@@ -1216,6 +1226,17 @@ var JSHINT = (function() {
         node.type === "true" ||
         node.type === "false" ||
         node.type === "undefined");
+  }
+
+  /**
+   * Determine if a given token marks the beginning of a UnaryExpression.
+   *
+   * @param {object} token
+   *
+   * @returns {boolean}
+   */
+  function beginsUnaryExpression(token) {
+    return token.arity === "unary" && token.id !== "++" && token.id !== "--";
   }
 
   var typeofValues = {};
@@ -1701,6 +1722,18 @@ var JSHINT = (function() {
         warning("W034", state.tokens.curr, directive);
       }
 
+      // From ECMAScript 2016:
+      //
+      // > 14.1.2 Static Semantics: Early Errors
+      // >
+      // > [...]
+      // > - It is a Syntax Error if ContainsUseStrict of FunctionBody is true
+      // >   and IsSimpleParameterList of FormalParameters is false.
+      if (directive === "use strict" && state.inES7() && !state.isStrict() &&
+        !state.funct["(global)"] && state.funct["(hasSimpleParams)"] === false) {
+        error("E062", state.tokens.curr);
+      }
+
       // there's no directive negation, so always set to true
       state.directive[directive] = true;
 
@@ -2002,6 +2035,19 @@ var JSHINT = (function() {
     error("E014");
   };
   assignop("%=", "assignmod", 20);
+  assignop("**=", function(left, that) {
+    if (!state.inES7()) {
+      warning("W119", that, "Exponentiation operator", "7");
+    }
+
+    that.left = left;
+
+    checkLeftSideAssign(left, that);
+
+    that.right = expression(10);
+
+    return that;
+  }, 20);
 
   bitwiseassignop("&=");
   bitwiseassignop("|=");
@@ -2049,6 +2095,26 @@ var JSHINT = (function() {
     return that;
   }, orPrecendence);
   infix("&&", "and", 50);
+  // The Exponentiation operator, introduced in ECMAScript 2016
+  //
+  // ExponentiationExpression[Yield] :
+  //   UnaryExpression[?Yield]
+  //   UpdateExpression[?Yield] ** ExponentiationExpression[?Yield]
+  infix("**", function(left, that) {
+    if (!state.inES7()) {
+      warning("W119", that, "Exponentiation operator", "7");
+    }
+
+    // Disallow UnaryExpressions which are not wrapped in parenthesis
+    if (!left.paren && beginsUnaryExpression(left)) {
+      error("E024", that, "**");
+    }
+
+    that.left = left;
+    that.right = expression(that.rbp);
+    return that;
+  }, 150);
+  state.syntax["**"].rbp = 140;
   bitwise("|", "bitor", 70);
   bitwise("^", "bitxor", 80);
   bitwise("&", "bitand", 90);
@@ -2207,7 +2273,8 @@ var JSHINT = (function() {
   state.syntax["--"].ltBoundary = "before";
 
   prefix("delete", function() {
-    var p = expression(10);
+    this.arity = "unary";
+    var p = expression(150);
     if (!p) {
       return this;
     }
@@ -2294,7 +2361,8 @@ var JSHINT = (function() {
     return this;
   });
 
-  prefix("typeof", (function() {
+  prefix("typeof", function() {
+    this.arity = "unary";
     var p = expression(150);
     this.first = this.right = p;
 
@@ -2308,7 +2376,7 @@ var JSHINT = (function() {
       p.forgiveUndef = true;
     }
     return this;
-  }));
+  });
   prefix("new", function() {
     var mp = metaProperty("target", function() {
       if (!state.inES6(true)) {
@@ -2581,6 +2649,9 @@ var JSHINT = (function() {
           (isFunctor(ret) && !isEndOfExpr()) ||
           // Used as the return value of a single-statement arrow function
           (ret.id === "{" && preceeding.id === "=>") ||
+          // Used to cover a unary expression as the left-hand side of the
+          // exponentiation operator
+          (beginsUnaryExpression(ret) && state.tokens.next.id === "**") ||
           // Used to delineate an integer number literal from a dereferencing
           // punctuator (otherwise interpreted as a decimal point)
           (ret.type === "(number)" &&
@@ -2598,7 +2669,7 @@ var JSHINT = (function() {
         isNecessary =
           (rbp > first.lbp) ||
           (rbp > 0 && rbp === first.lbp) ||
-          (!isEndOfExpr() && last.lbp < state.tokens.next.lbp);
+          (!isEndOfExpr() && last.rbp < state.tokens.next.lbp);
       }
 
       if (!isNecessary) {
@@ -2806,7 +2877,8 @@ var JSHINT = (function() {
    *                                  single-argument shorthand.
    * @param {bool} [options.parsedOpening] Whether the opening parenthesis has
    *                                       already been parsed.
-   * @returns {{ arity: number, params: Array.<string>}}
+   *
+   * @returns {{ arity: number, params: Array.<string>, isSimple: boolean }}
    */
   function functionparams(options) {
     var next;
@@ -2818,10 +2890,11 @@ var JSHINT = (function() {
     var pastRest = false;
     var arity = 0;
     var loneArg = options && options.loneArg;
+    var hasDestructuring = false;
 
     if (loneArg && loneArg.identifier === true) {
       state.funct["(scope)"].addParam(loneArg.value, loneArg);
-      return { arity: 1, params: [ loneArg.value ] };
+      return { arity: 1, params: [ loneArg.value ], isSimple: true };
     }
 
     next = state.tokens.next;
@@ -2845,6 +2918,7 @@ var JSHINT = (function() {
       var currentParams = [];
 
       if (_.contains(["{", "["], state.tokens.next.id)) {
+        hasDestructuring = true;
         tokens = destructuringPattern();
         for (t in tokens) {
           t = tokens[t];
@@ -2892,7 +2966,11 @@ var JSHINT = (function() {
         parseComma();
       } else {
         advance(")", next);
-        return { arity: arity, params: paramsIds };
+        return {
+          arity: arity,
+          params: paramsIds,
+          isSimple: !hasDestructuring && !pastRest && !pastDefault
+        };
       }
     }
   }
@@ -3059,10 +3137,12 @@ var JSHINT = (function() {
 
     if (paramsInfo) {
       state.funct["(params)"] = paramsInfo.params;
+      state.funct["(hasSimpleParams)"] = paramsInfo.isSimple;
       state.funct["(metrics)"].arity = paramsInfo.arity;
       state.funct["(metrics)"].verifyMaxParametersPerFunction();
     } else {
       state.funct["(metrics)"].arity = 0;
+      state.funct["(hasSimpleParams)"] = true;
     }
 
     if (isArrow) {
@@ -4467,7 +4547,7 @@ var JSHINT = (function() {
 
   (function(x) {
     x.exps = true;
-    x.lbp = 25;
+    x.lbp = x.rbp = 25;
     x.ltBoundary = "after";
   }(prefix("yield", function() {
     if (state.inMoz()) {

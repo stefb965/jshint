@@ -3248,6 +3248,148 @@ exports["destructuring function default values"] = function (test) {
   test.done();
 };
 
+exports["non-simple parameter list strict transition"] = function (test) {
+  var noTransitionNonStrict = [
+    "function f() {}",
+    "function f(x) {}",
+    "var a = x => {};",
+    "function f({ x }) {}",
+    "function f([ x ]) {}",
+    "function f(...x) {}",
+    "function f(x = 0) {}"
+  ];
+
+  TestRun(test, "no transition: ES6 & non-strict mode")
+    .test(noTransitionNonStrict, { esversion: 6 });
+  TestRun(test, "no transition: ES7 & non-strict mode")
+    .test(noTransitionNonStrict, { esversion: 7 });
+
+  var noTransitionStrict = [
+    "'use strict';",
+    "function f() {",
+    "  'use strict';",
+    "}",
+    "function f(x) {",
+    "  'use strict';",
+    "}",
+    "var a = x => {",
+    "  'use strict';",
+    "};",
+    "function f({ x }) {",
+    "  'use strict';",
+    "}",
+    "function f([ x ]) {",
+    "  'use strict';",
+    "}",
+    "function f(...x) {",
+    "  'use strict';",
+    "}",
+    "function f(x = 0) {",
+    "  'use strict';",
+    "}"
+  ];
+
+  TestRun(test, "no transition: ES6 & strict mode")
+    .addError(1, "Use the function form of \"use strict\".")
+    .addError(3, "Unnecessary directive \"use strict\".")
+    .addError(6, "Unnecessary directive \"use strict\".")
+    .addError(9, "Unnecessary directive \"use strict\".")
+    .addError(12, "Unnecessary directive \"use strict\".")
+    .addError(15, "Unnecessary directive \"use strict\".")
+    .addError(18, "Unnecessary directive \"use strict\".")
+    .addError(21, "Unnecessary directive \"use strict\".")
+    .test(noTransitionStrict, { esversion: 6 });
+  TestRun(test, "no transition: ES7 & strict mode")
+    .addError(1, "Use the function form of \"use strict\".")
+    .addError(3, "Unnecessary directive \"use strict\".")
+    .addError(6, "Unnecessary directive \"use strict\".")
+    .addError(9, "Unnecessary directive \"use strict\".")
+    .addError(12, "Unnecessary directive \"use strict\".")
+    .addError(15, "Unnecessary directive \"use strict\".")
+    .addError(18, "Unnecessary directive \"use strict\".")
+    .addError(21, "Unnecessary directive \"use strict\".")
+    .test(noTransitionStrict, { esversion: 7 });
+
+  var directTransition = [
+    "function f() {",
+    "  'use strict';",
+    "}",
+    "function f(x) {",
+    "  'use strict';",
+    "}",
+    "var a = x => {",
+    "  'use strict';",
+    "};",
+    "function f({ x }) {",
+    "  'use strict';",
+    "}",
+    "function f([ x ]) {",
+    "  'use strict';",
+    "}",
+    "function f(...x) {",
+    "  'use strict';",
+    "}",
+    "function f(x = 0) {",
+    "  'use strict';",
+    "}"
+  ];
+
+  TestRun(test, "direct transition: ES6")
+    .test(directTransition, { esversion: 6 });
+
+  TestRun(test, "direct transition: ES7")
+    .addError(11, "Functions defined outside of strict mode with non-simple parameter lists may not enable strict mode.")
+    .addError(14, "Functions defined outside of strict mode with non-simple parameter lists may not enable strict mode.")
+    .addError(17, "Functions defined outside of strict mode with non-simple parameter lists may not enable strict mode.")
+    .addError(20, "Functions defined outside of strict mode with non-simple parameter lists may not enable strict mode.")
+    .test(directTransition, { esversion: 7 });
+
+  var indirectTransition = [
+    "function f() {",
+    "  function g() {",
+    "    'use strict';",
+    "  }",
+    "}",
+    "function f(x) {",
+    "  function g() {",
+    "    'use strict';",
+    "  }",
+    "}",
+    "var a = x => {",
+    "  function g() {",
+    "    'use strict';",
+    "  }",
+    "};",
+    "function f({ x }) {",
+    "  function g() {",
+    "    'use strict';",
+    "  }",
+    "}",
+    "function f([ x ]) {",
+    "  function g() {",
+    "    'use strict';",
+    "  }",
+    "}",
+    "function f(...x) {",
+    "  function g() {",
+    "    'use strict';",
+    "  }",
+    "}",
+    "function f(x = 0) {",
+    "  function g() {",
+    "    'use strict';",
+    "  }",
+    "}",
+  ];
+
+  TestRun(test, "indirect transition: ES6")
+    .test(indirectTransition, { esversion: 6 });
+  TestRun(test, "indirect transition: ES7")
+    .test(indirectTransition, { esversion: 7 });
+
+  test.done();
+};
+
 exports["non var destructuring assignment statement"] = function (test) {
   var codeValid = [
     "let b;",
@@ -5375,6 +5517,7 @@ exports["fat arrows support"] = function (test) {
     .addError(8, "'z' is not defined.");
 
   run.test(code, { undef: true, esnext: true });
+  run.test(code, { undef: true, esversion: 2016 });
 
   run = TestRun(test)
     .addError(1, "'arrow function syntax (=>)' is only available in ES6 (use 'esversion: 6').")
@@ -7730,6 +7873,7 @@ exports["new.target"] = function (test) {
     .test(code);
 
   TestRun(test, "only in ES6").test(code, { esnext: true });
+  TestRun(test, "ES7").test(code, { esversion: 7 });
 
   var code2 = [
     "var a = new.target;",
@@ -7760,6 +7904,12 @@ exports["new.target"] = function (test) {
     .addError(4, "'new.target' must be in function scope.")
     .addError(6, "'new.target' must be in function scope.")
     .test(code2, { esnext: true });
+
+  TestRun(test, "must be in function scope")
+    .addError(1, "'new.target' must be in function scope.")
+    .addError(4, "'new.target' must be in function scope.")
+    .addError(6, "'new.target' must be in function scope.")
+    .test(code2, { esversion: 2016 });
 
   var code3 = [
     "var x = new.meta;"
@@ -7941,6 +8091,185 @@ exports.forInExpr = function (test) {
       "for (var x in [], []) {}",
       "for (var x of {}, {}) {}"
     ], { esversion: 6 });
+
+  test.done();
+};
+
+exports.exponentiation = {};
+
+exports.exponentiation.esversion = function (test) {
+  var src = "x = 2 ** 3;";
+
+  TestRun(test)
+    .addError(1, "'Exponentiation operator' is only available in ES7 (use 'esversion: 7').")
+    .test(src);
+
+  TestRun(test)
+    .addError(1, "'Exponentiation operator' is only available in ES7 (use 'esversion: 7').")
+    .test(src, { esversion: 6 });
+
+  TestRun(test)
+    .test(src, { esversion: 7 });
+
+  test.done();
+};
+
+exports.exponentiation.whitespace = function (test) {
+  TestRun(test)
+    .test([
+      "2 ** 3;",
+      "2** 3;",
+      "2 **3;",
+    ], { expr: true, esversion: 7 });
+
+  TestRun(test, "newlines")
+    .addError(2, "Misleading line break before '**'; readers may interpret this as an expression boundary.")
+    .test([
+      "2",
+      "** 3;",
+      "2 **",
+      "3;"
+    ], { expr: true, esversion: 7 });
+
+  TestRun(test, "invalid")
+    .addError(1, "Expected an identifier and instead saw '*'.")
+    .addError(1, "Missing semicolon.")
+    .test([
+      "2 * * 3;"
+    ], { expr: true, esversion: 7 });
+
+  test.done();
+};
+
+exports.exponentiation.leftPrecedence = function (test) {
+  TestRun(test, "UpdateExpressions")
+    .test([
+      "++x ** y;",
+      "--x ** y;",
+      "x++ ** y;",
+      "x-- ** y;",
+    ], { expr: true, esversion: 7 });
+
+  TestRun(test, "UnaryExpressions")
+    .addError(1, "Variables should not be deleted.")
+    .addError(1, "Unexpected '**'.")
+    .addError(2, "Unexpected '**'.")
+    .addError(3, "Unexpected '**'.")
+    .addError(4, "Unexpected '**'.")
+    .addError(5, "Unexpected '**'.")
+    .addError(6, "Unexpected '**'.")
+    .addError(7, "Unexpected '**'.")
+    .test([
+      "delete 2 ** 3;",
+      "void 2 ** 3;",
+      "typeof 2 ** 3;",
+      "+2 ** 3;",
+      "-2 ** 3;",
+      "~2 ** 3;",
+      "!2 ** 3;"
+    ], { expr: true, esversion: 7 });
+
+  TestRun(test, "Grouping")
+    .addError(1, "Variables should not be deleted.")
+    .test([
+      "(delete 2) ** 3;",
+      "(void 2) ** 3;",
+      "(typeof 2) ** 3;",
+      "(+2) ** 3;",
+      "(-2) ** 3;",
+      "(~2) ** 3;",
+      "(!2) ** 3;"
+    ], { expr: true, esversion: 7 });
+
+  test.done();
+};
+
+exports.exponentiation.rightPrecedence = function (test) {
+  TestRun(test, "ExponentiationExpression")
+    .test([
+      "x ** x ** y;",
+      "x ** ++x ** y;",
+      "x ** --x ** y;",
+      "x ** x++ ** y;",
+      "x ** x-- ** y;"
+    ], { expr: true, esversion: 7 });
+
+  TestRun(test, "UnaryExpression")
+    .test([
+      "x ** delete x.y;",
+      "x ** void y;",
+      "x ** typeof y;",
+      "x ** +y;",
+      "x ** -y;",
+      "x ** ~y;",
+      "x ** !y;"
+    ], { expr: true, esversion: 7 });
+
+  test.done();
+};
+
+exports.exponentiation.compundAssignment = function (test) {
+  var src = [
+      "x **= x;",
+      "x**=x;",
+      "x **= -2;",
+      "x **= 2 ** 4;"
+    ];
+
+  TestRun(test, "valid (esversion: 6)")
+    .addError(1, "'Exponentiation operator' is only available in ES7 (use 'esversion: 7').")
+    .addError(2, "'Exponentiation operator' is only available in ES7 (use 'esversion: 7').")
+    .addError(3, "'Exponentiation operator' is only available in ES7 (use 'esversion: 7').")
+    .addError(4, "'Exponentiation operator' is only available in ES7 (use 'esversion: 7').")
+    .test(src, { esversion: 5 });
+
+  TestRun(test, "valid (esversion: 6)")
+    .addError(1, "'Exponentiation operator' is only available in ES7 (use 'esversion: 7').")
+    .addError(2, "'Exponentiation operator' is only available in ES7 (use 'esversion: 7').")
+    .addError(3, "'Exponentiation operator' is only available in ES7 (use 'esversion: 7').")
+    .addError(4, "'Exponentiation operator' is only available in ES7 (use 'esversion: 7').")
+    .test(src, { esversion: 6 });
+
+  TestRun(test, "valid (esversion: 7)")
+    .test(src, { esversion: 7 });
+
+  TestRun(test, "invalid syntax - whitespace 1")
+    .addError(1, "Expected an identifier and instead saw '*='.")
+    .addError(1, "Expected an assignment or function call and instead saw an expression.")
+    .addError(1, "Missing semicolon.")
+    .test("x * *= x;", { esversion: 7 });
+
+  TestRun(test, "invalid syntax - whitespace 2")
+    .addError(1, "Expected an identifier and instead saw '*='.")
+    .addError(1, "Expected an assignment or function call and instead saw an expression.")
+    .addError(1, "Missing semicolon.")
+    .test("x * *= x;", { esversion: 7 });
+
+  TestRun(test, "invalid syntax - newline 1")
+    .addError(2, "Expected an identifier and instead saw '*='.")
+    .addError(2, "Expected an assignment or function call and instead saw an expression.")
+    .addError(2, "Missing semicolon.")
+    .test([
+      "x *",
+      "*= x;"
+    ], { esversion: 7 });
+
+  TestRun(test, "invalid syntax - newline 2")
+    .addError(2, "Expected an identifier and instead saw '='.")
+    .addError(2, "Expected an assignment or function call and instead saw an expression.")
+    .addError(2, "Missing semicolon.")
+    .test([
+      "x **",
+      "= x;"
+    ], { esversion: 7 });
+
+  TestRun(test, 'invalid assignment target')
+    .addError(1, "Bad assignment.")
+    .addError(2, "Bad assignment.")
+    .test([
+      "0 **= x;",
+      "this **= x;"
+    ], { esversion: 7 });
 
   test.done();
 };
